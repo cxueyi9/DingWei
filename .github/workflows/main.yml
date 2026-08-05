@@ -18,9 +18,23 @@ jobs:
 
       - name: Setup Theos
         run: |
-          # 使用官方 install-theos 脚本，自动安装 Theos、工具链和 SDK
+          # 使用官方安装脚本安装 Theos、工具链和 SDK
           curl -sSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos | bash -s -- --prefix $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+          # 动态查找可用的 SDK 并设置 THEOS_SDK_PATH
+          SDK_DIR=$(find $HOME/theos/sdks -maxdepth 1 -type d -name "*.sdk" | head -n 1)
+          if [ -n "$SDK_DIR" ]; then
+            echo "THEOS_SDK_PATH=$SDK_DIR" >> $GITHUB_ENV
+            echo "Using SDK: $SDK_DIR"
+          else
+            # 如果未找到，手动从 sdks 仓库稀疏检出
+            echo "No SDK found, cloning from sdks repo..."
+            git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/theos/sdks
+            cd $HOME/theos/sdks
+            git sparse-checkout set iPhoneOS.sdk
+            echo "THEOS_SDK_PATH=$HOME/theos/sdks/iPhoneOS.sdk" >> $GITHUB_ENV
+          fi
 
       - name: Build dylib
         run: |
