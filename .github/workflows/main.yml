@@ -18,18 +18,19 @@ jobs:
 
       - name: Setup Theos, toolchain and SDK
         run: |
-          # 克隆 Theos 主仓库
+          # 1. 克隆 Theos 主仓库
           git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-          # 克隆预编译工具链（包含 Linux 交叉编译 clang）
-          git clone --depth 1 https://github.com/theos/toolchain.git $HOME/theos/toolchain
+          # 2. 克隆工具链到独立目录（不与 theos 混在一起）
+          git clone --depth 1 https://github.com/theos/toolchain.git $HOME/toolchain
+          echo "THEOS_TOOLCHAIN_DIR=$HOME/toolchain" >> $GITHUB_ENV
 
-          # 克隆 SDK 仓库并只检出 iPhoneOS.sdk
-          rm -rf $HOME/theos/sdks   # 移除可能存在的空目录
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/theos/sdks
-          cd $HOME/theos/sdks
+          # 3. 克隆 SDK 到独立目录，只稀疏检出 iPhoneOS.sdk
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/sdks
+          cd $HOME/sdks
           git sparse-checkout set iPhoneOS.sdk
+          echo "THEOS_SDK_PATH=$HOME/sdks/iPhoneOS.sdk" >> $GITHUB_ENV
 
       - name: Build dylib
         run: |
