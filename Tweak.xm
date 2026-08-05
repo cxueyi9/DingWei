@@ -30,105 +30,144 @@ static void saveFavorites(NSArray *list) {
 }
 static NSArray *loadFavorites() { return [defaults() objectForKey:@"favorites"] ?: @[]; }
 
-// ========== 设置界面控制器 ==========
+// ========== 获取当前活跃的 UIWindowScene ==========
+static UIWindowScene * activeWindowScene(void) {
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]] &&
+            scene.activationState == UISceneActivationStateForegroundActive) {
+            return (UIWindowScene *)scene;
+        }
+    }
+    // fallback：取第一个 UIWindowScene
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            return (UIWindowScene *)scene;
+        }
+    }
+    return nil;
+}
+
+// ========== 设置界面控制器（浮层卡片） ==========
 @interface LFSettingsVC : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, copy) void (^dismissBlock)(void);
 @property (nonatomic, strong) UITextField *latField, *lonField;
 @property (nonatomic, strong) UISwitch *enabledSwitch;
 @property (nonatomic, strong) UITableView *favoritesTable;
 @property (nonatomic, strong) NSMutableArray *favorites;
+@property (nonatomic, strong) UIView *contentView;   // 卡片容器
 @end
 
 @implementation LFSettingsVC
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.85];
-    self.view.layer.cornerRadius = 20;
-    self.view.clipsToBounds = YES;
-    CGFloat w = 320, h = 480;
-    self.preferredContentSize = CGSizeMake(w, h);
-    
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(20, 20, w-40, 30)];
+    self.view.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4]; // 半透明背景
+
+    // 居中卡片
+    CGFloat cardW = 300;
+    CGFloat cardH = 460;
+    _contentView = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - cardW)/2,
+                                                             (self.view.bounds.size.height - cardH)/2,
+                                                             cardW, cardH)];
+    _contentView.backgroundColor = [UIColor colorWithWhite:0.1 alpha:0.95];
+    _contentView.layer.cornerRadius = 20;
+    _contentView.clipsToBounds = YES;
+    [self.view addSubview:_contentView];
+
+    // 标题
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(20, 20, cardW-40, 30)];
     title.text = @"📍 位置模拟";
     title.textColor = [UIColor whiteColor];
     title.font = [UIFont boldSystemFontOfSize:22];
     title.textAlignment = NSTextAlignmentCenter;
-    [self.view addSubview:title];
-    
-    UILabel *enableLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 60, 100, 30)];
+    [_contentView addSubview:title];
+
+    // 启用开关
+    UILabel *enableLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 65, 80, 30)];
     enableLabel.text = @"启用";
     enableLabel.textColor = [UIColor whiteColor];
-    [self.view addSubview:enableLabel];
-    _enabledSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(w-70, 60, 50, 30)];
+    [_contentView addSubview:enableLabel];
+    _enabledSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(cardW-70, 65, 50, 30)];
     _enabledSwitch.on = isEnabled();
     [_enabledSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.view addSubview:_enabledSwitch];
-    
+    [_contentView addSubview:_enabledSwitch];
+
+    // 经纬度输入
     CLLocationCoordinate2D cur = currentCoordinate();
-    _latField = [[UITextField alloc] initWithFrame:CGRectMake(20, 110, (w-50)/2, 35)];
+    _latField = [[UITextField alloc] initWithFrame:CGRectMake(20, 110, (cardW-60)/2, 36)];
     _latField.placeholder = @"纬度";
     _latField.text = [NSString stringWithFormat:@"%.6f", cur.latitude];
     _latField.borderStyle = UITextBorderStyleRoundedRect;
     _latField.keyboardType = UIKeyboardTypeDecimalPad;
     _latField.textColor = [UIColor whiteColor];
     _latField.backgroundColor = [UIColor darkGrayColor];
-    [self.view addSubview:_latField];
-    
-    _lonField = [[UITextField alloc] initWithFrame:CGRectMake(30+(w-50)/2, 110, (w-50)/2, 35)];
+    [_contentView addSubview:_latField];
+
+    _lonField = [[UITextField alloc] initWithFrame:CGRectMake(40+(cardW-60)/2, 110, (cardW-60)/2, 36)];
     _lonField.placeholder = @"经度";
     _lonField.text = [NSString stringWithFormat:@"%.6f", cur.longitude];
     _lonField.borderStyle = UITextBorderStyleRoundedRect;
     _lonField.keyboardType = UIKeyboardTypeDecimalPad;
     _lonField.textColor = [UIColor whiteColor];
     _lonField.backgroundColor = [UIColor darkGrayColor];
-    [self.view addSubview:_lonField];
-    
+    [_contentView addSubview:_lonField];
+
+    // 应用 & 收藏按钮
     UIButton *applyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    applyBtn.frame = CGRectMake(20, 160, (w-50)/2, 35);
+    applyBtn.frame = CGRectMake(20, 160, (cardW-60)/2, 36);
     [applyBtn setTitle:@"应用坐标" forState:UIControlStateNormal];
     [applyBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     applyBtn.backgroundColor = [UIColor systemBlueColor];
     applyBtn.layer.cornerRadius = 8;
     [applyBtn addTarget:self action:@selector(applyCoords) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:applyBtn];
-    
+    [_contentView addSubview:applyBtn];
+
     UIButton *saveBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    saveBtn.frame = CGRectMake(30+(w-50)/2, 160, (w-50)/2, 35);
+    saveBtn.frame = CGRectMake(40+(cardW-60)/2, 160, (cardW-60)/2, 36);
     [saveBtn setTitle:@"收藏当前" forState:UIControlStateNormal];
     [saveBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     saveBtn.backgroundColor = [UIColor systemGreenColor];
     saveBtn.layer.cornerRadius = 8;
     [saveBtn addTarget:self action:@selector(saveFavorite) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:saveBtn];
-    
+    [_contentView addSubview:saveBtn];
+
+    // 收藏列表
     UILabel *favLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 210, 200, 20)];
     favLabel.text = @"⭐ 收藏坐标";
     favLabel.textColor = [UIColor whiteColor];
-    [self.view addSubview:favLabel];
-    
-    _favoritesTable = [[UITableView alloc] initWithFrame:CGRectMake(20, 235, w-40, h-270) style:UITableViewStylePlain];
+    [_contentView addSubview:favLabel];
+
+    _favoritesTable = [[UITableView alloc] initWithFrame:CGRectMake(20, 240, cardW-40, cardH-270) style:UITableViewStylePlain];
     _favoritesTable.backgroundColor = [UIColor clearColor];
     _favoritesTable.separatorColor = [UIColor grayColor];
     _favoritesTable.delegate = self;
     _favoritesTable.dataSource = self;
     _favoritesTable.rowHeight = 44;
-    [self.view addSubview:_favoritesTable];
-    
+    [_contentView addSubview:_favoritesTable];
+
     _favorites = [loadFavorites() mutableCopy];
     [_favoritesTable reloadData];
-    
+
+    // 关闭按钮
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    closeBtn.frame = CGRectMake(w-50, 10, 40, 40);
+    closeBtn.frame = CGRectMake(cardW-45, 10, 40, 40);
     [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
     [closeBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:24];
     [closeBtn addTarget:self action:@selector(close) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:closeBtn];
-    
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
+    [_contentView addSubview:closeBtn];
+
+    // 点击背景关闭
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleBackgroundTap:)];
     tap.cancelsTouchesInView = NO;
     [self.view addGestureRecognizer:tap];
+}
+
+- (void)handleBackgroundTap:(UITapGestureRecognizer *)gesture {
+    CGPoint point = [gesture locationInView:self.view];
+    if (!CGRectContainsPoint(_contentView.frame, point)) {
+        [self close];
+    }
 }
 
 - (void)switchChanged:(UISwitch *)sender { setEnabled(sender.on); }
@@ -165,12 +204,11 @@ static NSArray *loadFavorites() { return [defaults() objectForKey:@"favorites"] 
 }
 
 - (void)close {
-    [self dismissViewControllerAnimated:YES completion:^{
+    [self.view endEditing:YES];
+    [self dismissViewControllerAnimated:NO completion:^{
         if (self.dismissBlock) self.dismissBlock();
     }];
 }
-
-- (void)dismissKeyboard { [self.view endEditing:YES]; }
 
 #pragma mark - TableView
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -213,12 +251,14 @@ static NSArray *loadFavorites() { return [defaults() objectForKey:@"favorites"] 
 @interface FloatView : UIView
 @property (nonatomic, weak) UILabel *badgeLabel;
 @property (nonatomic, assign) BOOL isEditing;
+@property (nonatomic, weak) UIWindowScene *scene; // 关联的 scene
 @end
 
 @implementation FloatView
 
-- (instancetype)initWithFrame:(CGRect)frame {
+- (instancetype)initWithFrame:(CGRect)frame scene:(UIWindowScene *)scene {
     if (self = [super initWithFrame:frame]) {
+        _scene = scene;
         self.backgroundColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:0.9];
         self.layer.cornerRadius = frame.size.width / 2;
         self.clipsToBounds = YES;
@@ -261,21 +301,32 @@ static NSArray *loadFavorites() { return [defaults() objectForKey:@"favorites"] 
     }
 }
 
+static UIWindow *settingsWindow = nil;
+
 - (void)showSettingsPanel {
-    if (self.isEditing) return;
+    if (self.isEditing || settingsWindow) return;
     self.isEditing = YES;
     
-    UIViewController *root = [UIApplication sharedApplication].keyWindow.rootViewController;
-    if (!root) { self.isEditing = NO; return; }
-    
     LFSettingsVC *vc = [[LFSettingsVC alloc] init];
-    vc.modalPresentationStyle = UIModalPresentationOverFullScreen;
-    vc.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
     __weak typeof(self) weakSelf = self;
     vc.dismissBlock = ^{
         weakSelf.isEditing = NO;
+        settingsWindow.hidden = YES;
+        settingsWindow = nil;
     };
-    [root presentViewController:vc animated:YES completion:nil];
+    
+    UIWindowScene *scene = self.scene ?: activeWindowScene();
+    UIWindow *window;
+    if (scene) {
+        window = [[UIWindow alloc] initWithWindowScene:scene];
+    } else {
+        window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    }
+    window.windowLevel = UIWindowLevelAlert + 2; // 比悬浮按钮更高
+    window.backgroundColor = [UIColor clearColor];
+    window.rootViewController = vc;
+    window.hidden = NO;
+    settingsWindow = window;
 }
 
 @end
@@ -286,7 +337,15 @@ static FloatView *floatView = nil;
 
 static void createFloatButton() {
     if (floatView) return;
-    UIWindow *window = [[UIWindow alloc] initWithFrame:CGRectMake(0, 0, 60, 60)];
+    
+    UIWindowScene *scene = activeWindowScene();
+    UIWindow *window;
+    if (scene) {
+        window = [[UIWindow alloc] initWithWindowScene:scene];
+    } else {
+        window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    }
+    window.frame = CGRectMake(0, 0, 60, 60);
     window.windowLevel = UIWindowLevelAlert + 1;
     window.backgroundColor = [UIColor clearColor];
     window.userInteractionEnabled = YES;
@@ -301,7 +360,7 @@ static void createFloatButton() {
         CGPoint saved = CGPointFromString(posStr);
         if (!CGPointEqualToPoint(saved, CGPointZero)) origin = saved;
     }
-    FloatView *fv = [[FloatView alloc] initWithFrame:CGRectMake(origin.x, origin.y, 50, 50)];
+    FloatView *fv = [[FloatView alloc] initWithFrame:CGRectMake(origin.x, origin.y, 50, 50) scene:scene];
     [window.rootViewController.view addSubview:fv];
     floatView = fv;
     overlayWindow = window;
