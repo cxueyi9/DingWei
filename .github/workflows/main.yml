@@ -17,16 +17,22 @@ jobs:
           sudo apt-get install -y git build-essential curl unzip
 
       - name: Setup Theos, toolchain and SDK
+        env:
+          GIT_TERMINAL_PROMPT: 0   # 禁止 git 交互式提问
         run: |
+          # 设置 git 基础信息（避免因缺失而产生提示）
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
           # 1. 克隆 Theos 主仓库
           git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-          # 2. 克隆工具链到独立目录（不与 theos 混在一起）
+          # 2. 克隆工具链到独立目录
           git clone --depth 1 https://github.com/theos/toolchain.git $HOME/toolchain
           echo "THEOS_TOOLCHAIN_DIR=$HOME/toolchain" >> $GITHUB_ENV
 
-          # 3. 克隆 SDK 到独立目录，只稀疏检出 iPhoneOS.sdk
+          # 3. 克隆 SDK 并只检出 iPhoneOS.sdk（稀疏检出）
           git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/sdks
           cd $HOME/sdks
           git sparse-checkout set iPhoneOS.sdk
