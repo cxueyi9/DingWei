@@ -386,7 +386,8 @@ __attribute__((constructor)) static void init() {
     
     Method origMethod = class_getInstanceMethod([CLLocation class], @selector(coordinate));
     if (origMethod) {
-        orig_coordinate = (void *)method_getImplementation(origMethod);
+        IMP imp = method_getImplementation(origMethod);
+        orig_coordinate = (CLLocationCoordinate2D (*)(id, SEL))imp;
         method_setImplementation(origMethod, (IMP)replaced_coordinate);
         NSLog(@"[locationfaker] Hook installed.");
     } else {
