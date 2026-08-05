@@ -18,21 +18,25 @@ jobs:
 
       - name: Setup Theos, toolchain and SDK
         env:
-          GIT_TERMINAL_PROMPT: 0   # 禁止 git 交互式提问
+          GIT_TERMINAL_PROMPT: 0
         run: |
-          # 设置 git 基础信息（避免因缺失而产生提示）
+          # 设置 git 基础信息
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-          # 1. 克隆 Theos 主仓库
+          # 生成认证 Header（使用 GITHUB_TOKEN）
+          AUTH_HEADER="Authorization: basic $(echo -n x-access-token:${{ secrets.GITHUB_TOKEN }} | base64)"
+          git config --global http.extraheader "$AUTH_HEADER"
+
+          # 克隆 Theos
           git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-          # 2. 克隆工具链到独立目录
+          # 克隆 toolchain
           git clone --depth 1 https://github.com/theos/toolchain.git $HOME/toolchain
           echo "THEOS_TOOLCHAIN_DIR=$HOME/toolchain" >> $GITHUB_ENV
 
-          # 3. 克隆 SDK 并只检出 iPhoneOS.sdk（稀疏检出）
+          # 克隆 sdks 并稀疏检出 iPhoneOS.sdk
           git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/sdks
           cd $HOME/sdks
           git sparse-checkout set iPhoneOS.sdk
