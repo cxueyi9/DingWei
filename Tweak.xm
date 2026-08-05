@@ -285,8 +285,7 @@ static CLLocationCoordinate2D replaced_coordinate(id self, SEL _cmd) {
         return currentCoordinate();
     }
     // 调用原方法
-    CLLocationCoordinate2D (*orig)(id, SEL) = (void *)orig_coordinate;
-    return orig(self, _cmd);
+    return ((CLLocationCoordinate2D (*)(id, SEL))orig_coordinate)(self, _cmd);
 }
 
 // ----- 初始化入口 -----
