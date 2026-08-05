@@ -2,35 +2,46 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+// ========== 穿透视图（触摸穿透给下层窗口） ==========
+@interface PassthroughView : UIView
+@property (nonatomic, weak) UIView *targetView; // 需要响应触摸的按钮
+@end
+@implementation PassthroughView
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hitView = [super hitTest:point withEvent:event];
+    // 如果点击的是自身（即没有子视图被命中），则穿透
+    if (hitView == self) {
+        return nil;
+    }
+    return hitView;
+}
+@end
+
 // ========== 存储工具 ==========
 static NSUserDefaults *defaults() { return [NSUserDefaults standardUserDefaults]; }
-
 static BOOL isEnabled() { return [defaults() boolForKey:@"enabled"]; }
 static void setEnabled(BOOL on) {
     [defaults() setBool:on forKey:@"enabled"];
     [defaults() synchronize];
 }
-
 static CLLocationCoordinate2D currentCoordinate() {
     double lat = [defaults() doubleForKey:@"latitude"];
     double lon = [defaults() doubleForKey:@"longitude"];
     if (lat == 0 && lon == 0) { lat = 37.3349; lon = -122.0093; }
     return CLLocationCoordinate2DMake(lat, lon);
 }
-
 static void setCoordinate(CLLocationCoordinate2D coord) {
     [defaults() setDouble:coord.latitude forKey:@"latitude"];
     [defaults() setDouble:coord.longitude forKey:@"longitude"];
     [defaults() synchronize];
 }
-
 static void saveFavorites(NSArray *list) {
     [defaults() setObject:list forKey:@"favorites"];
     [defaults() synchronize];
 }
 static NSArray *loadFavorites() { return [defaults() objectForKey:@"favorites"] ?: @[]; }
 
-// ========== 获取当前活跃的 UIWindowScene ==========
+// ========== 获取当前活跃 UIWindowScene ==========
 static UIWindowScene * activeWindowScene(void) {
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if ([scene isKindOfClass:[UIWindowScene class]] &&
@@ -38,7 +49,6 @@ static UIWindowScene * activeWindowScene(void) {
             return (UIWindowScene *)scene;
         }
     }
-    // fallback
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if ([scene isKindOfClass:[UIWindowScene class]]) {
             return (UIWindowScene *)scene;
@@ -47,7 +57,7 @@ static UIWindowScene * activeWindowScene(void) {
     return nil;
 }
 
-// ========== 设置界面控制器（浮层卡片） ==========
+// ========== 设置界面控制器 ==========
 @interface LFSettingsVC : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, copy) void (^dismissBlock)(void);
 @property (nonatomic, strong) UITextField *latField, *lonField;
@@ -63,8 +73,7 @@ static UIWindowScene * activeWindowScene(void) {
     [super viewDidLoad];
     self.view.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
 
-    CGFloat cardW = 300;
-    CGFloat cardH = 460;
+    CGFloat cardW = 300, cardH = 460;
     _contentView = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - cardW)/2,
                                                              (self.view.bounds.size.height - cardH)/2,
                                                              cardW, cardH)];
@@ -236,7 +245,6 @@ static UIWindowScene * activeWindowScene(void) {
         [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
     }
 }
-
 @end
 
 // ========== 悬浮按钮视图 ==========
@@ -247,7 +255,6 @@ static UIWindowScene * activeWindowScene(void) {
 @end
 
 @implementation FloatView
-
 - (instancetype)initWithFrame:(CGRect)frame scene:(UIWindowScene *)scene {
     if (self = [super initWithFrame:frame]) {
         _scene = scene;
@@ -314,14 +321,13 @@ static UIWindow *settingsWindow = nil;
     } else {
         window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     }
-    window.frame = [UIScreen mainScreen].bounds;          // 全屏透明窗口
-    window.windowLevel = UIWindowLevelAlert + 2;
+    window.frame = [UIScreen mainScreen].bounds;
+    window.windowLevel = UIWindowLevelAlert + 2;  // 高于悬浮窗
     window.backgroundColor = [UIColor clearColor];
     window.rootViewController = vc;
     window.hidden = NO;
     settingsWindow = window;
 }
-
 @end
 
 // ========== 悬浮窗口管理 ==========
@@ -338,13 +344,16 @@ static void createFloatButton() {
     } else {
         window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     }
-    window.frame = [UIScreen mainScreen].bounds;          // 全屏透明窗口，接收触摸事件
+    window.frame = [UIScreen mainScreen].bounds;
     window.windowLevel = UIWindowLevelAlert + 1;
     window.backgroundColor = [UIColor clearColor];
     window.userInteractionEnabled = YES;
+    
+    // 使用穿透视图作为根视图，保证按钮以外区域不拦截触摸
+    PassthroughView *passthrough = [[PassthroughView alloc] initWithFrame:window.bounds];
+    window.rootViewController = [[UIViewController alloc] init];
+    window.rootViewController.view = passthrough;
     window.hidden = NO;
-    window.rootViewController = [UIViewController new];
-    window.rootViewController.view.backgroundColor = [UIColor clearColor];
     
     CGPoint origin = CGPointMake([UIScreen mainScreen].bounds.size.width - 70, 100);
     NSString *posStr = [[NSUserDefaults standardUserDefaults] objectForKey:@"floatPos"];
@@ -353,7 +362,7 @@ static void createFloatButton() {
         if (!CGPointEqualToPoint(saved, CGPointZero)) origin = saved;
     }
     FloatView *fv = [[FloatView alloc] initWithFrame:CGRectMake(origin.x, origin.y, 50, 50) scene:scene];
-    [window.rootViewController.view addSubview:fv];
+    [passthrough addSubview:fv];
     floatView = fv;
     overlayWindow = window;
 }
@@ -379,7 +388,7 @@ __attribute__((constructor)) static void init() {
     Method origMethod = class_getInstanceMethod([CLLocation class], @selector(coordinate));
     if (origMethod) {
         IMP imp = method_getImplementation(origMethod);
-        orig_coordinate = (CLLocationCoordinate2D (*)(id, SEL))imp;   // 正确转换函数指针
+        orig_coordinate = (CLLocationCoordinate2D (*)(id, SEL))imp;
         method_setImplementation(origMethod, (IMP)replaced_coordinate);
         NSLog(@"[locationfaker] Hook installed.");
     } else {
