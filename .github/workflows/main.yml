@@ -1,0 +1,30 @@
+name: Build LocationFaker
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential curl unzip
+      - name: Setup Theos
+        run: |
+          git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          $HOME/theos/bin/ios-sdk-download.sh
+      - name: Build dylib
+        run: |
+          make -j 4
+          find .theos/obj -name "*.dylib" -exec cp {} locationfaker.dylib \;
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: locationfaker
+          path: locationfaker.dylib
