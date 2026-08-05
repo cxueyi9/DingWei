@@ -2,7 +2,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-static CLLocationCoordinate2D (*orig_coordinate)(id self, SEL _cmd);
+static IMP orig_coordinate = NULL;   // 使用 IMP 类型
 
 // ----- 存储工具 -----
 static NSUserDefaults *defaults() { return [NSUserDefaults standardUserDefaults]; }
@@ -29,7 +29,7 @@ static void setCoordinate(CLLocationCoordinate2D coord) {
     [defaults() synchronize];
 }
 
-// ----- 设置界面控制器（同上，略作优化） -----
+// ----- 设置界面控制器 -----
 @interface LocationFakerSettingsVC : UIViewController <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UITextField *latField, *lonField;
 @property (nonatomic, strong) UISwitch *enabledSwitch;
@@ -208,7 +208,7 @@ static void setCoordinate(CLLocationCoordinate2D coord) {
 
 @end
 
-// ----- 悬浮按钮管理（使用 UIApplication 分类来承载手势） -----
+// ----- 悬浮按钮管理 -----
 @interface UIApplication (LocationFaker)
 - (void)lf_showSettings;
 - (void)lf_handlePan:(UIPanGestureRecognizer *)gesture;
@@ -218,7 +218,6 @@ static void setCoordinate(CLLocationCoordinate2D coord) {
 - (void)lf_showSettings {
     UIViewController *root = [UIApplication sharedApplication].keyWindow.rootViewController;
     if (root.presentedViewController) {
-        // 如果已有弹窗，先关闭
         [root dismissViewControllerAnimated:NO completion:nil];
     }
     LocationFakerSettingsVC *vc = [[LocationFakerSettingsVC alloc] init];
@@ -238,7 +237,7 @@ static void setCoordinate(CLLocationCoordinate2D coord) {
 @end
 
 static void createFloatButton() {
-    if ([[UIApplication sharedApplication] valueForKey:@"lf_floatButton"]) return; // 避免重复
+    if (objc_getAssociatedObject([UIApplication sharedApplication], "lf_floatButton")) return;
     
     UIWindow *window = [[UIWindow alloc] initWithFrame:CGRectMake(0, 0, 60, 60)];
     window.windowLevel = UIWindowLevelAlert + 1;
@@ -260,24 +259,23 @@ static void createFloatButton() {
     btn.layer.shadowRadius = 4;
     btn.userInteractionEnabled = YES;
     
-    // 长按手势
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:[UIApplication sharedApplication] action:@selector(lf_showSettings)];
     longPress.minimumPressDuration = 0.8;
     [btn addGestureRecognizer:longPress];
     
-    // 拖动手势
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:[UIApplication sharedApplication] action:@selector(lf_handlePan:)];
     [btn addGestureRecognizer:pan];
     
     [window.rootViewController.view addSubview:btn];
     
-    // 关联到 UIApplication 以便检查
+    // 保存引用
     objc_setAssociatedObject([UIApplication sharedApplication], "lf_floatButton", btn, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject([UIApplication sharedApplication], "lf_floatWindow", window, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     
-    // 位置：右上角
+    // 默认位置右上角
     CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    (void)screenH; // 消除未使用警告
     btn.center = CGPointMake(screenW - 50, 100);
 }
 
@@ -286,7 +284,9 @@ static CLLocationCoordinate2D replaced_coordinate(id self, SEL _cmd) {
     if (isEnabled()) {
         return currentCoordinate();
     }
-    return orig_coordinate(self, _cmd);
+    // 调用原方法
+    CLLocationCoordinate2D (*orig)(id, SEL) = (void *)orig_coordinate;
+    return orig(self, _cmd);
 }
 
 // ----- 初始化入口 -----
@@ -300,7 +300,7 @@ __attribute__((constructor)) static void init() {
     
     Method origMethod = class_getInstanceMethod([CLLocation class], @selector(coordinate));
     if (origMethod) {
-        orig_coordinate = (void *)method_getImplementation(origMethod);
+        orig_coordinate = method_getImplementation(origMethod);
         method_setImplementation(origMethod, (IMP)replaced_coordinate);
         NSLog(@"[locationfaker] Hook installed.");
     } else {
