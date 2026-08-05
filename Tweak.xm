@@ -38,7 +38,7 @@ static UIWindowScene * activeWindowScene(void) {
             return (UIWindowScene *)scene;
         }
     }
-    // fallback：取第一个 UIWindowScene
+    // fallback
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if ([scene isKindOfClass:[UIWindowScene class]]) {
             return (UIWindowScene *)scene;
@@ -54,16 +54,15 @@ static UIWindowScene * activeWindowScene(void) {
 @property (nonatomic, strong) UISwitch *enabledSwitch;
 @property (nonatomic, strong) UITableView *favoritesTable;
 @property (nonatomic, strong) NSMutableArray *favorites;
-@property (nonatomic, strong) UIView *contentView;   // 卡片容器
+@property (nonatomic, strong) UIView *contentView;
 @end
 
 @implementation LFSettingsVC
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4]; // 半透明背景
+    self.view.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.4];
 
-    // 居中卡片
     CGFloat cardW = 300;
     CGFloat cardH = 460;
     _contentView = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - cardW)/2,
@@ -74,7 +73,6 @@ static UIWindowScene * activeWindowScene(void) {
     _contentView.clipsToBounds = YES;
     [self.view addSubview:_contentView];
 
-    // 标题
     UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(20, 20, cardW-40, 30)];
     title.text = @"📍 位置模拟";
     title.textColor = [UIColor whiteColor];
@@ -82,7 +80,6 @@ static UIWindowScene * activeWindowScene(void) {
     title.textAlignment = NSTextAlignmentCenter;
     [_contentView addSubview:title];
 
-    // 启用开关
     UILabel *enableLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 65, 80, 30)];
     enableLabel.text = @"启用";
     enableLabel.textColor = [UIColor whiteColor];
@@ -92,7 +89,6 @@ static UIWindowScene * activeWindowScene(void) {
     [_enabledSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
     [_contentView addSubview:_enabledSwitch];
 
-    // 经纬度输入
     CLLocationCoordinate2D cur = currentCoordinate();
     _latField = [[UITextField alloc] initWithFrame:CGRectMake(20, 110, (cardW-60)/2, 36)];
     _latField.placeholder = @"纬度";
@@ -112,7 +108,6 @@ static UIWindowScene * activeWindowScene(void) {
     _lonField.backgroundColor = [UIColor darkGrayColor];
     [_contentView addSubview:_lonField];
 
-    // 应用 & 收藏按钮
     UIButton *applyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     applyBtn.frame = CGRectMake(20, 160, (cardW-60)/2, 36);
     [applyBtn setTitle:@"应用坐标" forState:UIControlStateNormal];
@@ -131,7 +126,6 @@ static UIWindowScene * activeWindowScene(void) {
     [saveBtn addTarget:self action:@selector(saveFavorite) forControlEvents:UIControlEventTouchUpInside];
     [_contentView addSubview:saveBtn];
 
-    // 收藏列表
     UILabel *favLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 210, 200, 20)];
     favLabel.text = @"⭐ 收藏坐标";
     favLabel.textColor = [UIColor whiteColor];
@@ -148,7 +142,6 @@ static UIWindowScene * activeWindowScene(void) {
     _favorites = [loadFavorites() mutableCopy];
     [_favoritesTable reloadData];
 
-    // 关闭按钮
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     closeBtn.frame = CGRectMake(cardW-45, 10, 40, 40);
     [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
@@ -157,7 +150,6 @@ static UIWindowScene * activeWindowScene(void) {
     [closeBtn addTarget:self action:@selector(close) forControlEvents:UIControlEventTouchUpInside];
     [_contentView addSubview:closeBtn];
 
-    // 点击背景关闭
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleBackgroundTap:)];
     tap.cancelsTouchesInView = NO;
     [self.view addGestureRecognizer:tap];
@@ -251,7 +243,7 @@ static UIWindowScene * activeWindowScene(void) {
 @interface FloatView : UIView
 @property (nonatomic, weak) UILabel *badgeLabel;
 @property (nonatomic, assign) BOOL isEditing;
-@property (nonatomic, weak) UIWindowScene *scene; // 关联的 scene
+@property (nonatomic, weak) UIWindowScene *scene;
 @end
 
 @implementation FloatView
@@ -322,7 +314,8 @@ static UIWindow *settingsWindow = nil;
     } else {
         window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     }
-    window.windowLevel = UIWindowLevelAlert + 2; // 比悬浮按钮更高
+    window.frame = [UIScreen mainScreen].bounds;          // 全屏透明窗口
+    window.windowLevel = UIWindowLevelAlert + 2;
     window.backgroundColor = [UIColor clearColor];
     window.rootViewController = vc;
     window.hidden = NO;
@@ -345,7 +338,7 @@ static void createFloatButton() {
     } else {
         window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
     }
-    window.frame = CGRectMake(0, 0, 60, 60);
+    window.frame = [UIScreen mainScreen].bounds;          // 全屏透明窗口，接收触摸事件
     window.windowLevel = UIWindowLevelAlert + 1;
     window.backgroundColor = [UIColor clearColor];
     window.userInteractionEnabled = YES;
@@ -353,7 +346,6 @@ static void createFloatButton() {
     window.rootViewController = [UIViewController new];
     window.rootViewController.view.backgroundColor = [UIColor clearColor];
     
-    // 恢复上次保存的位置
     CGPoint origin = CGPointMake([UIScreen mainScreen].bounds.size.width - 70, 100);
     NSString *posStr = [[NSUserDefaults standardUserDefaults] objectForKey:@"floatPos"];
     if (posStr) {
@@ -387,7 +379,7 @@ __attribute__((constructor)) static void init() {
     Method origMethod = class_getInstanceMethod([CLLocation class], @selector(coordinate));
     if (origMethod) {
         IMP imp = method_getImplementation(origMethod);
-        orig_coordinate = (CLLocationCoordinate2D (*)(id, SEL))imp;
+        orig_coordinate = (CLLocationCoordinate2D (*)(id, SEL))imp;   // 正确转换函数指针
         method_setImplementation(origMethod, (IMP)replaced_coordinate);
         NSLog(@"[locationfaker] Hook installed.");
     } else {

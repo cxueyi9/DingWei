@@ -1,5 +1,5 @@
 ARCHS = arm64 arm64e
-TARGET = iphone:clang:16.5:15.0    # SDK 16.5，最低要求 iOS 15.0
+TARGET = iphone:clang:16.5:15.0    # 使用当前环境的 SDK 16.5，最低要求 iOS 15.0
 
 include $(THEOS)/makefiles/common.mk
 
