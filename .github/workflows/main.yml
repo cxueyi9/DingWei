@@ -20,7 +20,18 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-          $HOME/theos/bin/ios-sdk-download.sh
+          
+          # 尝试使用官方下载脚本（如果存在）
+          if [ -f "$HOME/theos/bin/ios-sdk-download.sh" ]; then
+            $HOME/theos/bin/ios-sdk-download.sh
+          else
+            # 从 sdks 仓库稀疏检出 iPhoneOS.sdk
+            git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/theos/sdks
+            cd $HOME/theos/sdks
+            git sparse-checkout set iPhoneOS.sdk
+            # 设置 SDK 路径环境变量，确保 Theos 能找到
+            echo "THEOS_SDK_PATH=$HOME/theos/sdks/iPhoneOS.sdk" >> $GITHUB_ENV
+          fi
 
       - name: Build dylib
         run: |
@@ -28,7 +39,7 @@ jobs:
           find .theos/obj -name "*.dylib" -exec cp {} locationfaker.dylib \;
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4   # ← 关键修改：v3 → v4
+        uses: actions/upload-artifact@v4
         with:
           name: locationfaker
           path: locationfaker.dylib
