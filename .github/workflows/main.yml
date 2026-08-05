@@ -18,34 +18,45 @@ jobs:
 
       - name: Setup Theos, toolchain and SDK
         run: |
-          # 1. 安装 Theos 和工具链
-          curl -sSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos | bash -s -- --prefix $HOME/theos
+          # 克隆 Theos
+          git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-          # 2. 检查 SDK 是否存在，若不存在则克隆 sdks 仓库
-          if [ ! -d "$HOME/theos/sdks" ] || [ -z "$(ls -A $HOME/theos/sdks/*.sdk 2>/dev/null)" ]; then
-            echo "No SDK found, cloning sdks repo..."
-            rm -rf $HOME/theos/sdks  # 清理可能不完整的目录
-            git clone --depth 1 https://github.com/theos/sdks.git $HOME/theos/sdks
-          fi
+          # 下载预编译工具链（仅 arm64 可用）
+          curl -L https://github.com/theos/toolchain/releases/download/20240419/toolchain-linux-x86_64.tar.xz -o toolchain.tar.xz
+          tar -xf toolchain.tar.xz -C $HOME/theos
+          echo "THEOS_TOOLCHAIN_DIR=$HOME/theos/toolchain" >> $GITHUB_ENV
 
-          # 3. 动态查找第一个 .sdk 目录
-          SDK_DIR=$(find $HOME/theos/sdks -maxdepth 1 -type d -name "*.sdk" | head -n 1)
-          if [ -n "$SDK_DIR" ]; then
-            echo "Found SDK: $SDK_DIR"
-            echo "THEOS_SDK_PATH=$SDK_DIR" >> $GITHUB_ENV
-          else
-            echo "ERROR: No SDK found in $HOME/theos/sdks"
-            echo "Contents of sdks directory:"
-            ls -la $HOME/theos/sdks || echo "sdks directory does not exist"
-            exit 1
-          fi
+          # 克隆 SDK（只取 iPhoneOS.sdk）
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/theos/sdks
+          cd $HOME/theos/sdks
+          git sparse-checkout set iPhoneOS.sdk
+          echo "THEOS_SDK_PATH=$HOME/theos/sdks/iPhoneOS.sdk" >> $GITHUB_ENV
 
       - name: Build dylib
         run: |
-          echo "Using SDK: $THEOS_SDK_PATH"
           make -j 4
-          find .theos/obj -name "*.dylib" -exec cp {} locationfaker.dylib \;
+          # 查找生成的 dylib
+          DYLIB=$(find .theos/obj -name "*.dylib" | head -n 1)
+          echo "Found dylib: $DYLIB"
+          file $DYLIB
+          # 检查架构
+          lipo -info $DYLIB || true
+          # 如果包含多个架构，提取 arm64（确保只有 arm64）
+          # 这里我们可以直接用 lipo 提取 arm64 并替换原文件
+          if lipo -info $DYLIB | grep -q "arm64"; then
+            lipo $DYLIB -thin arm64 -output locationfaker_arm64.dylib
+            mv locationfaker_arm64.dylib locationfaker.dylib
+          else
+            cp $DYLIB locationfaker.dylib
+          fi
+          # 再次检查最终文件
+          file locationfaker.dylib
+          # 尝试用 ldid 签名（确保可以被识别）
+          # 安装 ldid
+          curl -L -o ldid https://github.com/ProcursusTeam/ldid/releases/latest/download/ldid
+          chmod +x ldid
+          ./ldid -S locationfaker.dylib || echo "ldid signing failed, but continuing"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
