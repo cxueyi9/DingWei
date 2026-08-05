@@ -17,34 +17,10 @@ jobs:
           sudo apt-get install -y git build-essential curl unzip
 
       - name: Setup Theos
-        env:
-          GIT_TERMINAL_PROMPT: 0
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-          # 克隆 Theos（仅主仓库）
-          git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
+          # 使用官方 install-theos 脚本，自动安装 Theos、工具链和 SDK
+          curl -sSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos | bash -s -- --prefix $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-
-          # 安装工具链（会自动下载所需的 iOS 工具链和 SDK）
-          # 若脚本不存在，则手动下载预编译工具链（备选方案）
-          if [ -f "$HOME/theos/bin/install-toolchain" ]; then
-            $HOME/theos/bin/install-toolchain
-          else
-            # 手动下载预编译工具链（来自 GitHub Releases）
-            curl -L https://github.com/theos/toolchain/releases/latest/download/toolchain-linux-x86_64.tar.xz -o toolchain.tar.xz
-            tar -xf toolchain.tar.xz -C $HOME/theos
-            echo "THEOS_TOOLCHAIN_DIR=$HOME/theos/toolchain" >> $GITHUB_ENV
-          fi
-
-          # 下载 SDK（只获取 iPhoneOS.sdk）
-          # 如果 SDK 目录不存在，从 sdks 仓库稀疏检出
-          if [ ! -d "$HOME/theos/sdks/iPhoneOS.sdk" ]; then
-            git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/theos/sdks
-            cd $HOME/theos/sdks
-            git sparse-checkout set iPhoneOS.sdk
-          fi
 
       - name: Build dylib
         run: |
