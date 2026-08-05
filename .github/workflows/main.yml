@@ -16,21 +16,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git build-essential curl unzip
 
-      - name: Setup Theos
+      - name: Setup Theos, toolchain and SDK
         run: |
-          # 使用官方一键安装脚本（自动安装 Theos、工具链和 SDK）
-          curl -sSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos | bash -s -- --prefix $HOME/theos
+          # 1. 克隆 Theos 主仓库
+          git clone --depth 1 https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-          # 检查 SDK 是否存在，若不存在则从 sdks 仓库稀疏检出
-          if [ ! -d "$HOME/theos/sdks/iPhoneOS.sdk" ]; then
-            echo "iPhoneOS.sdk not found, cloning from sdks repo..."
-            rm -rf $HOME/theos/sdks   # 移除可能存在的空目录
-            git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/theos/sdks
-            cd $HOME/theos/sdks
-            git sparse-checkout set iPhoneOS.sdk
-          fi
+          # 2. 下载已知可用的工具链（版本 20240419）
+          curl -L -o toolchain.tar.xz https://github.com/theos/toolchain/releases/download/20240419/toolchain-linux-x86_64.tar.xz
+          tar -xf toolchain.tar.xz -C $HOME/theos
+          echo "THEOS_TOOLCHAIN_DIR=$HOME/theos/toolchain" >> $GITHUB_ENV
+
+          # 3. 克隆 SDK 并稀疏检出 iPhoneOS.sdk
+          rm -rf $HOME/theos/sdks  # 确保目录不存在
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git $HOME/theos/sdks
+          cd $HOME/theos/sdks
+          git sparse-checkout set iPhoneOS.sdk
           echo "THEOS_SDK_PATH=$HOME/theos/sdks/iPhoneOS.sdk" >> $GITHUB_ENV
+
+          # 检查 SDK 是否存在
+          if [ ! -d "$HOME/theos/sdks/iPhoneOS.sdk" ]; then
+            echo "ERROR: iPhoneOS.sdk not found after sparse checkout"
+            exit 1
+          fi
+          ls -la $HOME/theos/sdks
 
       - name: Build dylib
         run: |
