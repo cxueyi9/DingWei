@@ -18,28 +18,32 @@ jobs:
 
       - name: Setup Theos, toolchain and SDK
         run: |
-          # 1. 使用官方脚本安装 Theos 和工具链
+          # 1. 安装 Theos 和工具链
           curl -sSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos | bash -s -- --prefix $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
 
-          # 2. 完整克隆 SDK 仓库（深度1，包含所有 SDK）
-          rm -rf $HOME/theos/sdks   # 删除可能存在的空目录
-          git clone --depth 1 https://github.com/theos/sdks.git $HOME/theos/sdks
+          # 2. 检查 SDK 是否存在，若不存在则克隆 sdks 仓库
+          if [ ! -d "$HOME/theos/sdks" ] || [ -z "$(ls -A $HOME/theos/sdks/*.sdk 2>/dev/null)" ]; then
+            echo "No SDK found, cloning sdks repo..."
+            rm -rf $HOME/theos/sdks  # 清理可能不完整的目录
+            git clone --depth 1 https://github.com/theos/sdks.git $HOME/theos/sdks
+          fi
 
-          # 3. 设置 SDK 路径
-          echo "THEOS_SDK_PATH=$HOME/theos/sdks/iPhoneOS.sdk" >> $GITHUB_ENV
-
-          # 4. 验证 SDK 是否存在
-          ls -la $HOME/theos/sdks
-          if [ ! -d "$HOME/theos/sdks/iPhoneOS.sdk" ]; then
-            echo "ERROR: iPhoneOS.sdk not found!"
+          # 3. 动态查找第一个 .sdk 目录
+          SDK_DIR=$(find $HOME/theos/sdks -maxdepth 1 -type d -name "*.sdk" | head -n 1)
+          if [ -n "$SDK_DIR" ]; then
+            echo "Found SDK: $SDK_DIR"
+            echo "THEOS_SDK_PATH=$SDK_DIR" >> $GITHUB_ENV
+          else
+            echo "ERROR: No SDK found in $HOME/theos/sdks"
+            echo "Contents of sdks directory:"
+            ls -la $HOME/theos/sdks || echo "sdks directory does not exist"
             exit 1
           fi
 
       - name: Build dylib
         run: |
-          # 打印环境变量以确认
-          echo "THEOS_SDK_PATH=$THEOS_SDK_PATH"
+          echo "Using SDK: $THEOS_SDK_PATH"
           make -j 4
           find .theos/obj -name "*.dylib" -exec cp {} locationfaker.dylib \;
 
